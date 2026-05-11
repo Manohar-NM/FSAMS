@@ -1,0 +1,17 @@
+{
+  "name": "fsams",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c green,cyan \"npm run dev --workspace server\" \"npm run vite:dev --workspace client\"",
+    "start": "concurrently -k -n backend,frontend -c green,cyan \"npm start --workspace server\" \"npm run vite:dev --workspace client\"",
+    "build": "npm run build --workspace client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
