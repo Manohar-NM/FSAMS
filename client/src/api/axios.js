@@ -4,7 +4,9 @@ const fallbackApiUrl = import.meta.env.PROD
   ? "https://fsams.onrender.com/api"
   : "/api";
 const rawApiUrl = import.meta.env.VITE_API_URL || fallbackApiUrl;
-const normalizedApiUrl = rawApiUrl.replace(/\/$/, "");
+const normalizedApiUrl = rawApiUrl
+  .replace(/^VITE_API_URL=/, "")
+  .replace(/\/$/, "");
 const baseURL = normalizedApiUrl.endsWith("/api")
   ? normalizedApiUrl
   : `${normalizedApiUrl}/api`;
