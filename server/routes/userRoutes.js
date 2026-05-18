@@ -8,7 +8,8 @@ import {
   listUsers,
   principalDirectory,
   resetPassword,
-  updateUserStatus
+  updateUserStatus,
+  validateAccountEmail
 } from "../controllers/userController.js";
 import { authorize, protect } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -24,6 +25,7 @@ router.get("/principal/directory", authorize("principal"), principalDirectory);
 router.use(authorize("admin"));
 router.get("/", listUsers);
 router.get("/stats", adminStats);
+router.get("/validate-email", validateAccountEmail);
 router.post("/", createUserRules, validate, createUser);
 router.post("/bulk", upload.single("file"), bulkUploadUsers);
 router.patch("/:id/reset-password", resetPasswordRules, validate, resetPassword);

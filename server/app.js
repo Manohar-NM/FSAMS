@@ -16,6 +16,10 @@ const app = express();
 const allowedOrigins = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
+  "http://localhost:5175",
+  "http://127.0.0.1:5175",
   ...(process.env.CLIENT_URL || "")
     .split(",")
     .map((origin) => origin.trim())
@@ -50,12 +54,15 @@ app.use("/api", (req, res, next) => {
 
   const status =
     mongoose.connection.readyState === 2 ? "connecting" : "unavailable";
+  const lastError = globalThis.lastMongoConnectionError;
 
   return res.status(503).json({
     message:
       status === "connecting"
         ? "Database is still connecting. Try again in a moment."
-        : "Database unavailable. Check MongoDB Atlas network access and MONGO_URI.",
+        : lastError
+          ? `Database unavailable. Last MongoDB connection error: ${lastError}`
+          : "Database unavailable. Check MongoDB Atlas network access and MONGO_URI.",
     database: status
   });
 });

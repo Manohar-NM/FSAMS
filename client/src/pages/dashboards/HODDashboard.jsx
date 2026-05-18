@@ -23,6 +23,7 @@ const sectionMax = { partA: 20, partB: 20, partC: 25, partD: 15, partE: 10, part
 const label = (value) => value.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
 const getErrorMessage = (error, fallback) => error?.response?.data?.message || error?.message || fallback;
 const formatDate = (value) => (value ? new Date(value).toLocaleString() : "-");
+const getSubmittedAt = (item) => item?.submitted_at || item?.submittedAt;
 const displayValue = (value) => (value === 0 || value ? String(value) : "-");
 
 export default function HODDashboard() {
@@ -183,7 +184,7 @@ export default function HODDashboard() {
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <p className="text-xs font-bold uppercase text-slate-500">Submitted</p>
-                <p className="mt-2 font-semibold text-academic-ink">{formatDate(viewing.submittedAt)}</p>
+                <p className="mt-2 font-semibold text-academic-ink">{formatDate(getSubmittedAt(viewing))}</p>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <p className="text-xs font-bold uppercase text-slate-500">HOD Review</p>
@@ -251,7 +252,8 @@ export default function HODDashboard() {
 
   return (
     <DashboardLayout title="HOD Dashboard" subtitle="Review submitted appraisals from your department only.">
-      <section className="mb-8 rounded-lg bg-gradient-to-r from-academic-navy to-academic-leaf p-6 text-white shadow-glass">
+      <section id="dashboard-overview" className="mb-8 scroll-mt-28 rounded-lg bg-gradient-to-r from-academic-navy to-academic-leaf p-6 text-white shadow-glass">
+        <span id="profile-panel" className="block scroll-mt-28" />
         <p className="text-sm text-emerald-100">Department Authority</p>
         <h2 className="mt-1 text-2xl font-bold">{user.name}</h2>
         <p className="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">HOD, {user.department}</p>
@@ -264,7 +266,7 @@ export default function HODDashboard() {
         <MetricCard title="Returned / Rejected" value={appraisals.filter((a) => ["returned_for_edit", "rejected"].includes(a.status)).length} accent="bg-rose-500" />
       </div>
 
-      <section className="mt-8 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <section id="department-faculty" className="mt-8 scroll-mt-28 overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-4">
           <h2 className="text-xl font-bold text-academic-ink">{user.department} Faculty List</h2>
         </div>
@@ -285,7 +287,7 @@ export default function HODDashboard() {
                   <td className="px-4 py-3 font-medium">{member.name}</td>
                   <td className="px-4 py-3">{member.facultyId || "-"}</td>
                   <td className="px-4 py-3">{member.latestAppraisal ? "Started" : "Not started"}</td>
-                  <td className="px-4 py-3">{member.latestAppraisal?.submittedAt ? new Date(member.latestAppraisal.submittedAt).toLocaleDateString() : "-"}</td>
+                  <td className="px-4 py-3">{getSubmittedAt(member.latestAppraisal) ? new Date(getSubmittedAt(member.latestAppraisal)).toLocaleDateString() : "-"}</td>
                   <td className="px-4 py-3"><StatusBadge status={member.latestAppraisal?.status || "draft"} /></td>
                 </tr>
               ))}
@@ -294,7 +296,9 @@ export default function HODDashboard() {
         </div>
       </section>
 
-      <section className="mt-8">
+      <section id="faculty-submissions" className="mt-8 scroll-mt-28">
+        <span id="pending-reviews" className="block scroll-mt-28" />
+        <span id="approved-forms" className="block scroll-mt-28" />
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <h2 className="text-xl font-bold text-academic-ink">Department Appraisals</h2>
           {loading && <span className="inline-flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> Loading appraisals...</span>}
@@ -306,6 +310,7 @@ export default function HODDashboard() {
         )}
         <AppraisalTable
           appraisals={appraisals}
+          showSubmittedOn
           actions={(item) => (
             <div className="min-w-64 space-y-2">
               {item.status === "submitted" ? (

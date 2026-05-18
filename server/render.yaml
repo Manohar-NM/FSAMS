@@ -14,5 +14,19 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      - key: LOGIN_URL
+        sync: false
       - key: ORG_EMAIL_DOMAIN
-        value: aiet.org.in
+        sync: false
+      - key: UPLOAD_DIR
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_VALIDATION_TIMEOUT_MS
+        value: "10000"
+      - key: EMAIL_SEND_TIMEOUT_MS
+        value: "10000"

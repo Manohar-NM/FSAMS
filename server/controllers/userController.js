@@ -1,14 +1,8 @@
 import User from "../models/User.js";
 import Appraisal from "../models/Appraisal.js";
 import { parseUserCsv } from "../utils/csv.js";
-import { sendAccountEmail } from "../utils/email.js";
-
-const ensureOrgEmail = (email) => {
-  const domain = process.env.ORG_EMAIL_DOMAIN;
-  if (domain && !email.toLowerCase().endsWith(`@${domain.toLowerCase()}`)) {
-    throw new Error(`Only @${domain} organization emails are allowed`);
-  }
-};
+import { EmailValidationError, verifyAccountEmail } from "../utils/emailValidation.js";
+import { sendAccountCreatedEmail } from "../utils/sendEmail.js";
 
 const ensureValidPassword = (password) => {
   if (!String(password || "").trim()) {
@@ -20,40 +14,76 @@ const ensureValidPassword = (password) => {
 };
 
 const createAccount = async ({ name, email, role, department = "CSE", facultyId = "", designation = "", password }) => {
-  const normalizedEmail = String(email || "").toLowerCase().trim();
-  ensureOrgEmail(normalizedEmail);
+  const { email: normalizedEmail } = await verifyAccountEmail(email);
   ensureValidPassword(password);
-  const existing = await User.findOne({ email: normalizedEmail });
-  if (existing) throw new Error(`User already exists: ${normalizedEmail}`);
 
-  const user = await User.create({
-    name,
-    email: normalizedEmail,
-    role,
-    department,
-    facultyId,
-    designation,
-    password,
-    isFirstLogin: false
-  });
-  await sendAccountEmail({ to: normalizedEmail, name });
-  return { user };
+  let user;
+  try {
+    user = await User.create({
+      name,
+      email: normalizedEmail,
+      role,
+      department,
+      facultyId,
+      designation,
+      password,
+      isFirstLogin: false
+    });
+  } catch (error) {
+    if (error.code === 11000 && error.keyPattern?.email) {
+      throw new EmailValidationError("Email is already registered", 409);
+    }
+    throw error;
+  }
+
+  let emailSent = false;
+  try {
+    emailSent = await sendAccountCreatedEmail({
+      to: normalizedEmail,
+      name,
+      role,
+      department,
+      password
+    });
+  } catch (error) {
+    console.warn("Account email could not be sent", { email: normalizedEmail, reason: error.message });
+  }
+
+  return { user, emailSent };
 };
 
 export const createUser = async (req, res) => {
-  const result = await createAccount(req.body);
-  res.status(201).json({
-    message: "User account created successfully",
-    user: {
-      id: result.user._id,
-      name: result.user.name,
-      email: result.user.email,
-      role: result.user.role,
-      department: result.user.department,
-      facultyId: result.user.facultyId,
-      designation: result.user.designation
-    }
-  });
+  try {
+    const result = await createAccount(req.body);
+    res.status(201).json({
+      message: result.emailSent
+        ? "User created and email sent successfully"
+        : "Account created but email could not be sent",
+      emailSent: result.emailSent,
+      user: {
+        id: result.user._id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+        department: result.user.department,
+        facultyId: result.user.facultyId,
+        designation: result.user.designation
+      }
+    });
+  } catch (error) {
+    const status = error.statusCode || 400;
+    res.status(status).json({ message: error.message || "Unable to create user" });
+  }
+};
+
+export const validateAccountEmail = async (req, res) => {
+  try {
+    const result = await verifyAccountEmail(req.query.email);
+    res.json(result);
+  } catch (error) {
+    const status = error instanceof EmailValidationError ? error.statusCode : 503;
+    res.status(status).json({ message: error.message || "Unable to verify email currently. Please try again." });
+  }
 };
 
 export const bulkUploadUsers = async (req, res) => {
@@ -72,7 +102,8 @@ export const bulkUploadUsers = async (req, res) => {
         role: result.user.role,
         department: result.user.department,
         facultyId: result.user.facultyId,
-        designation: result.user.designation
+        designation: result.user.designation,
+        emailSent: result.emailSent
       });
     } catch (error) {
       failed.push({ row, error: error.message });
@@ -104,7 +135,7 @@ export const departmentFaculty = async (req, res) => {
     .sort({ name: 1 });
 
   const appraisals = await Appraisal.find({ department: req.user.department })
-    .select("userId faculty status submittedAt updatedAt academicYear")
+    .select("userId faculty status submitted_at submittedAt is_locked updatedAt academicYear")
     .sort({ updatedAt: -1 });
 
   const latestByFaculty = new Map();

@@ -27,6 +27,11 @@ const validatePasswords = ({ password, confirmPassword }) => {
 const getApiError = (error) =>
   error.response?.data?.errors?.[0]?.msg || error.response?.data?.message || "Request failed. Please try again.";
 
+const getEmailFormatError = (email) => {
+  if (!email.trim()) return "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? "" : "Invalid email format";
+};
+
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({ totalFaculties: 0, totalHods: 0, totalSubmissions: 0, pendingReviews: 0 });
@@ -42,6 +47,7 @@ export default function AdminDashboard() {
   const [resetError, setResetError] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
+  const [emailValidation, setEmailValidation] = useState({ status: "idle", message: "" });
 
   const load = async () => {
     const { data } = await api.get("/users");
@@ -54,6 +60,41 @@ export default function AdminDashboard() {
     load();
   }, []);
 
+  useEffect(() => {
+    const email = form.email.trim();
+    const formatError = getEmailFormatError(email);
+
+    if (!email) {
+      setEmailValidation({ status: "idle", message: "" });
+      return;
+    }
+
+    if (formatError) {
+      setEmailValidation({ status: "error", message: formatError });
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(async () => {
+      setEmailValidation({ status: "checking", message: "Verifying email address..." });
+      try {
+        const { data } = await api.get("/users/validate-email", {
+          params: { email },
+          signal: controller.signal
+        });
+        setEmailValidation({ status: "valid", message: data.message || "Email address is valid" });
+      } catch (error) {
+        if (error.name === "CanceledError") return;
+        setEmailValidation({ status: "error", message: getApiError(error) });
+      }
+    }, 700);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [form.email]);
+
   const createUser = async (event) => {
     event.preventDefault();
     const validationMessage = validatePasswords(form);
@@ -61,11 +102,20 @@ export default function AdminDashboard() {
       setFormError(validationMessage);
       return;
     }
+    if (emailValidation.status === "checking") {
+      setFormError("Email verification is still in progress.");
+      return;
+    }
+    if (emailValidation.status === "error") {
+      setFormError(emailValidation.message);
+      return;
+    }
     setFormError("");
     try {
       const { data } = await api.post("/users", form);
       setCreated(data);
       setForm(emptyForm);
+      setEmailValidation({ status: "idle", message: "" });
       await load();
     } catch (error) {
       setCreated(null);
@@ -118,7 +168,7 @@ export default function AdminDashboard() {
 
   return (
     <DashboardLayout title="Admin Dashboard" subtitle="Create accounts, upload CSV users, and monitor system usage.">
-      <div className="grid gap-5 md:grid-cols-4">
+      <div id="dashboard-overview" className="scroll-mt-28 grid gap-5 md:grid-cols-4">
         <MetricCard title="Users" value={users.length} />
         <MetricCard title="Faculty" value={stats.totalFaculties} accent="bg-academic-blue" />
         <MetricCard title="HODs" value={stats.totalHods} accent="bg-academic-gold" />
@@ -127,16 +177,31 @@ export default function AdminDashboard() {
       </div>
 
       <div className="mt-8 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-        <section className="glass rounded-lg p-6">
+        <section id="create-users" className="glass scroll-mt-28 rounded-lg p-6">
           <h2 className="text-xl font-bold text-academic-ink">Create Account</h2>
           {created && (
-            <div className="mt-4 rounded-md bg-teal-50 p-3 text-sm text-teal-800">
+            <div className={`mt-4 rounded-md p-3 text-sm ${created.emailSent === false ? "bg-amber-50 text-amber-800" : "bg-teal-50 text-teal-800"}`}>
               <p className="font-semibold">{created.message}</p>
             </div>
           )}
           <form onSubmit={createUser} className="mt-5 space-y-4">
             <input className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-            <input className="input" placeholder="Organization email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+            <div>
+              <input className="input" placeholder="Organization email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+              {emailValidation.message && (
+                <p
+                  className={`mt-1 text-sm font-semibold ${
+                    emailValidation.status === "valid"
+                      ? "text-teal-700"
+                      : emailValidation.status === "checking"
+                        ? "text-slate-500"
+                        : "text-red-600"
+                  }`}
+                >
+                  {emailValidation.message}
+                </p>
+              )}
+            </div>
             <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               <option value="faculty">Faculty</option>
               <option value="hod">HOD</option>
@@ -202,9 +267,9 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <section id="manage-users" className="scroll-mt-28 overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-200 p-4">
-            <h2 className="text-xl font-bold text-academic-ink">Users</h2>
+            <h2 id="departments" className="scroll-mt-28 text-xl font-bold text-academic-ink">Users</h2>
             <label className="relative mt-3 block">
               <Search className="absolute left-3 top-2.5 text-slate-400" size={17} />
               <input className="input pl-9" placeholder="Search by name, email, role, department, ID" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -262,7 +327,7 @@ export default function AdminDashboard() {
               </form>
             )}
           </div>
-          <div className="overflow-x-auto">
+          <div id="reports" className="scroll-mt-28 overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>

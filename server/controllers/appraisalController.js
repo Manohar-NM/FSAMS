@@ -3,7 +3,12 @@ import { calculateScores } from "../utils/scoring.js";
 import { notifyRole, notifyUsers } from "../utils/notifications.js";
 import { generateAppraisalPdf } from "../utils/pdf.js";
 
-const canFacultyEdit = (status) => ["draft", "returned_for_edit"].includes(status);
+const canFacultyEdit = (appraisal) => !appraisal?.is_locked && ["draft", "returned_for_edit"].includes(appraisal?.status);
+const pdfFileName = (appraisal) => {
+  const academicYear = String(appraisal.academicYear || "appraisal").replace(/[^a-zA-Z0-9-]/g, "-");
+  const semester = String(appraisal.semester || "NA").replace(/[^a-zA-Z0-9-]/g, "-");
+  return `FAA-${academicYear}-Semester-${semester}.pdf`;
+};
 
 const findForUser = (id) => Appraisal.findById(id).populate("userId faculty hodId", "name email department role facultyId designation");
 
@@ -17,7 +22,7 @@ export const saveDraft = async (req, res) => {
     return res.status(404).json({ message: "Appraisal not found" });
   }
 
-  if (existing && !canFacultyEdit(existing.status)) {
+  if (existing && !canFacultyEdit(existing)) {
     return res.status(423).json({ message: "Appraisal is locked after submission" });
   }
 
@@ -71,10 +76,13 @@ export const saveDraft = async (req, res) => {
 export const submitAppraisal = async (req, res) => {
   const appraisal = await Appraisal.findOne({ _id: req.params.id, userId: req.user._id });
   if (!appraisal) return res.status(404).json({ message: "Appraisal not found" });
-  if (!canFacultyEdit(appraisal.status)) return res.status(423).json({ message: "Appraisal is locked" });
+  if (!canFacultyEdit(appraisal)) return res.status(423).json({ message: "Appraisal is locked" });
 
+  const submittedAt = appraisal.submitted_at || appraisal.submittedAt || new Date();
   appraisal.status = "submitted";
-  appraisal.submittedAt = new Date();
+  appraisal.submitted_at = submittedAt;
+  appraisal.submittedAt = submittedAt;
+  appraisal.is_locked = true;
   appraisal.remarks.returnReason = "";
   await appraisal.save();
 
@@ -167,7 +175,12 @@ export const hodAction = async (req, res) => {
   appraisal.hodRemarks = reviewText;
   appraisal.hodId = req.user._id;
   if (action === "reject") appraisal.remarks.rejectionReason = reasonText;
-  if (action === "return") appraisal.remarks.returnReason = reasonText;
+  if (action === "return") {
+    appraisal.remarks.returnReason = reasonText;
+    appraisal.is_locked = false;
+  } else {
+    appraisal.is_locked = true;
+  }
   if (action === "approve") appraisal.approvedAt = new Date();
   appraisal.hodReviewedAt = new Date();
   await appraisal.save();
@@ -227,7 +240,7 @@ export const principalRemarks = async (req, res) => {
 export const uploadProofs = async (req, res) => {
   const appraisal = await Appraisal.findOne({ _id: req.params.id, userId: req.user._id });
   if (!appraisal) return res.status(404).json({ message: "Appraisal not found" });
-  if (!canFacultyEdit(appraisal.status)) return res.status(423).json({ message: "Proof upload is locked after submission" });
+  if (!canFacultyEdit(appraisal)) return res.status(423).json({ message: "Proof upload is locked after submission" });
 
   appraisal.proofs.push(
     ...req.files.map((file) => ({
@@ -254,8 +267,14 @@ export const downloadPdf = async (req, res) => {
     return res.status(403).json({ message: "Access denied" });
   }
 
-  const pdf = await generateAppraisalPdf(appraisal);
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename=FAA-${appraisal.academicYear}.pdf`);
-  res.send(pdf);
+  try {
+    const pdf = await generateAppraisalPdf(appraisal);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${pdfFileName(appraisal)}"`);
+    res.setHeader("Content-Length", pdf.length);
+    res.end(pdf);
+  } catch (error) {
+    console.error("PDF generation failed", { appraisalId: appraisal._id, error: error.message });
+    res.status(500).json({ message: "Unable to generate PDF" });
+  }
 };

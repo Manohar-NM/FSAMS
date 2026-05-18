@@ -24,7 +24,7 @@ const passwordRules = [
 
 export const createUserRules = [
   body("name").trim().isLength({ min: 2 }),
-  body("email").isEmail().normalizeEmail(),
+  body("email").isEmail().withMessage("Invalid email format").normalizeEmail(),
   body("role").isIn(USER_ROLES),
   body("department").trim().isLength({ min: 2 }),
   body("facultyId").optional({ checkFalsy: true }).trim().isLength({ min: 2 }),

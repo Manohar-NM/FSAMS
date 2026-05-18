@@ -1,7 +1,19 @@
 import React from "react";
 import StatusBadge from "./StatusBadge";
 
-export default function AppraisalTable({ appraisals, actions, mode = "default" }) {
+const formatSubmittedOn = (value) =>
+  value
+    ? new Date(value).toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      })
+    : "N/A";
+
+export default function AppraisalTable({ appraisals, actions, mode = "default", showSubmittedOn = false }) {
   if (mode === "faculty") {
     return (
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -50,6 +62,7 @@ export default function AppraisalTable({ appraisals, actions, mode = "default" }
               <th className="px-4 py-3">Academic Year</th>
               <th className="px-4 py-3">Score</th>
               <th className="px-4 py-3">Status</th>
+              {showSubmittedOn && <th className="px-4 py-3">Submitted On</th>}
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -62,12 +75,13 @@ export default function AppraisalTable({ appraisals, actions, mode = "default" }
                 <td className="px-4 py-3">{item.academicYear}</td>
                 <td className="px-4 py-3">{item.scores?.total ?? 0}</td>
                 <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
+                {showSubmittedOn && <td className="px-4 py-3 whitespace-nowrap">{formatSubmittedOn(item.submitted_at || item.submittedAt)}</td>}
                 <td className="px-4 py-3">{actions?.(item)}</td>
               </tr>
             ))}
             {!appraisals.length && (
               <tr>
-                <td colSpan="7" className="px-4 py-8 text-center text-slate-500">No appraisals found.</td>
+                <td colSpan={showSubmittedOn ? 8 : 7} className="px-4 py-8 text-center text-slate-500">No appraisals found.</td>
               </tr>
             )}
           </tbody>

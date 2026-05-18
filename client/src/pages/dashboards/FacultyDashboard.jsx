@@ -124,6 +124,31 @@ const isRowStarted = (item, columns) => columns.some((column) => String(item[col
 const getErrorMessage = (error, fallback) => error?.response?.data?.message || error?.message || fallback;
 const normalizeStep = (value) => (SECTION_ORDER.includes(value) ? value : "partA");
 const isValidAcademicYear = (value) => /^\d{4}-\d{2}$/.test(String(value || "").trim());
+const getPdfFileName = (item) => `FAA-${item.academicYear}-Semester-${item.semester || "NA"}.pdf`;
+const getSubmittedAt = (item) => item?.submitted_at || item?.submittedAt;
+const formatSubmittedOn = (value) =>
+  value
+    ? new Date(value).toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      })
+    : "N/A";
+const getPdfErrorMessage = async (error) => {
+  const data = error?.response?.data;
+  if (data instanceof Blob) {
+    const text = await data.text();
+    try {
+      return JSON.parse(text).message || "Unable to generate PDF";
+    } catch {
+      return text || "Unable to generate PDF";
+    }
+  }
+  return getErrorMessage(error, "Unable to generate PDF");
+};
 
 export default function FacultyDashboard() {
   const { user } = useAuth();
@@ -136,6 +161,7 @@ export default function FacultyDashboard() {
   const [errors, setErrors] = useState({});
   const [action, setAction] = useState("");
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [submissionNotice, setSubmissionNotice] = useState(null);
   const [newAppraisalOpen, setNewAppraisalOpen] = useState(false);
   const [newAppraisalForm, setNewAppraisalForm] = useState({ academicYear: DEFAULT_ACADEMIC_YEAR, semester: "1" });
   const [newAppraisalError, setNewAppraisalError] = useState("");
@@ -143,7 +169,9 @@ export default function FacultyDashboard() {
 
   const scores = useMemo(() => calculateScores(form.parts), [form.parts]);
   const current = appraisals.find((item) => item._id === selectedId);
-  const editable = Boolean(selectedId) && (!current || ["draft", "returned_for_edit"].includes(current.status));
+  const isLocked = Boolean(current?.is_locked);
+  const submittedOn = getSubmittedAt(current);
+  const editable = Boolean(selectedId) && !isLocked && (!current || ["draft", "returned_for_edit"].includes(current.status));
   const currentStepIndex = SECTION_ORDER.indexOf(step);
 
   const load = async () => {
@@ -266,6 +294,11 @@ export default function FacultyDashboard() {
     setNewAppraisalOpen(true);
   };
 
+  useEffect(() => {
+    window.addEventListener("fsams:new-appraisal", openNewAppraisal);
+    return () => window.removeEventListener("fsams:new-appraisal", openNewAppraisal);
+  }, []);
+
   const createNewAppraisal = async (event) => {
     event.preventDefault();
     const academicYear = String(newAppraisalForm.academicYear || "").trim();
@@ -353,9 +386,13 @@ export default function FacultyDashboard() {
       const saved = await save(true, "summary", { background: true });
       const id = saved?._id || selectedId;
       if (!id) throw new Error("Draft must be saved before submission.");
-      await api.patch(`/appraisals/${id}/submit`);
+      const { data } = await api.patch(`/appraisals/${id}/submit`);
+      const submittedAt = getSubmittedAt(data.appraisal);
       localStorage.removeItem(draftKey(user, id));
-      setMessage("Submitted to HOD successfully. Form is now locked.");
+      setSelectedId(data.appraisal._id);
+      setAppraisals((items) => items.map((item) => (item._id === data.appraisal._id ? data.appraisal : item)));
+      setMessage(`Appraisal locked for HOD review. Submitted on: ${formatSubmittedOn(submittedAt)}`);
+      setSubmissionNotice({ submittedAt });
       await load();
     } catch (error) {
       setMessage(getErrorMessage(error, "Submission failed"));
@@ -398,17 +435,24 @@ export default function FacultyDashboard() {
     setAction("downloading");
     try {
       const response = await api.get(`/appraisals/${item._id}/pdf`, { responseType: "blob" });
-      const url = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+      const contentType = response.headers["content-type"] || "";
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: "application/pdf" });
+
+      if (!contentType.includes("application/pdf") || blob.size === 0) {
+        throw new Error("Unable to generate PDF");
+      }
+
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `FAA-${item.academicYear}-Semester-${item.semester || "NA"}.pdf`;
+      link.download = getPdfFileName(item);
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
       setMessage("PDF downloaded successfully.");
     } catch (error) {
-      setMessage(getErrorMessage(error, "PDF generation failed"));
+      setMessage(await getPdfErrorMessage(error));
     } finally {
       setAction("");
     }
@@ -653,8 +697,8 @@ export default function FacultyDashboard() {
         </button>
       }
     >
-      <section className="mb-5 grid gap-4 md:grid-cols-3">
-        <div className="glass rounded-lg p-5 md:col-span-2">
+      <section id="dashboard-overview" className="mb-5 scroll-mt-28 grid gap-4 md:grid-cols-3">
+        <div id="profile-panel" className="glass scroll-mt-28 rounded-lg p-5 md:col-span-2">
           <p className="text-sm font-semibold text-academic-teal">Faculty Profile</p>
           <h2 className="mt-2 text-2xl font-bold text-academic-ink">{user.name}</h2>
           <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
@@ -679,7 +723,7 @@ export default function FacultyDashboard() {
       </div>
 
       <div className="mt-8 space-y-8">
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <section id="appraisal-workflow" className="scroll-mt-28 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-6 py-5 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-academic-teal">Page-wise Appraisal Workflow</p>
@@ -707,7 +751,12 @@ export default function FacultyDashboard() {
               {message}
             </p>
           )}
-          {selectedId && !editable && <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">This appraisal is locked after submission.</p>}
+          {selectedId && isLocked && (
+            <div className="mx-6 mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              <p className="font-semibold">Status: Locked for HOD Review</p>
+              <p>Submitted on: {formatSubmittedOn(submittedOn)}</p>
+            </div>
+          )}
 
           {renderStepper()}
 
@@ -752,7 +801,7 @@ export default function FacultyDashboard() {
           </div>
         </section>
 
-        <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <section id="my-appraisals" className="min-w-0 scroll-mt-28 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <FileText className="text-academic-teal" size={20} />
             <h2 className="text-xl font-bold text-academic-ink">My Appraisals</h2>
@@ -822,6 +871,19 @@ export default function FacultyDashboard() {
               <button type="button" className="btn-primary" disabled={busy} onClick={submit}>
                 <Send size={18} /> {action === "submitting" ? "Submitting..." : "Confirm Submit"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {submissionNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-xl font-bold text-academic-ink">Appraisal locked for HOD review</h3>
+            <p className="mt-4 text-sm font-semibold text-slate-600">Submitted on:</p>
+            <p className="mt-1 text-lg font-bold text-academic-ink">{formatSubmittedOn(submissionNotice.submittedAt)}</p>
+            <div className="mt-5 flex justify-end">
+              <button type="button" className="btn-primary" onClick={() => setSubmissionNotice(null)}>OK</button>
             </div>
           </div>
         </div>

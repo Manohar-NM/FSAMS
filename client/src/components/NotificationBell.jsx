@@ -23,10 +23,13 @@ export default function NotificationBell() {
   useEffect(() => {
     load().catch(() => {});
     const refresh = () => load().catch(() => {});
+    const openNotifications = () => setOpen(true);
     window.addEventListener("fsams:notifications-refresh", refresh);
+    window.addEventListener("fsams:open-notifications", openNotifications);
     const interval = setInterval(() => load().catch(() => {}), 15000);
     return () => {
       window.removeEventListener("fsams:notifications-refresh", refresh);
+      window.removeEventListener("fsams:open-notifications", openNotifications);
       clearInterval(interval);
     };
   }, []);
@@ -51,7 +54,7 @@ export default function NotificationBell() {
         </div>
       )}
 
-      <button className="relative rounded-md bg-white px-3 py-2 text-academic-ink shadow-sm" onClick={() => setOpen((value) => !value)}>
+      <button className="relative rounded-md border border-slate-200 bg-white px-3 py-2 text-academic-ink shadow-sm transition hover:border-academic-teal/30 hover:text-academic-teal" onClick={() => setOpen((value) => !value)}>
         <Bell size={18} />
         {unreadCount > 0 && (
           <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-academic-terracotta px-1 text-xs font-bold text-white">

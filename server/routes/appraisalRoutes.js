@@ -20,7 +20,7 @@ import { validate } from "../middleware/validate.js";
 import { appraisalDraftRules, reviewRules } from "../validators/appraisalValidators.js";
 
 const router = express.Router();
-const uploadDir = path.join(process.cwd(), "uploads", "proofs");
+const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads", "proofs");
 fs.mkdirSync(uploadDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),

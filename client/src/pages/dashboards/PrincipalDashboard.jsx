@@ -41,13 +41,13 @@ export default function PrincipalDashboard() {
 
   return (
     <DashboardLayout title="Principal Dashboard" subtitle="View HOD-approved appraisals and record final remarks.">
-      <div className="grid gap-5 md:grid-cols-3">
+      <div id="dashboard-overview" className="scroll-mt-28 grid gap-5 md:grid-cols-3">
         <MetricCard title="HOD Approved" value={appraisals.filter((a) => a.status === "hod_approved").length} />
         <MetricCard title="Final Reviewed" value={appraisals.filter((a) => a.status === "final_reviewed").length} accent="bg-academic-gold" />
         <MetricCard title="Departments" value={new Set(appraisals.map((a) => a.department)).size} accent="bg-academic-blue" />
       </div>
 
-      <section className="mt-8 rounded-lg border border-slate-200 bg-white p-5">
+      <section id="department-reviews" className="mt-8 scroll-mt-28 rounded-lg border border-slate-200 bg-white p-5">
         <label className="block max-w-sm">
           <span className="label">Department</span>
           <select className="input mt-1" value={department} onChange={(e) => { setDepartment(e.target.value); setSelectedHod(null); }}>
@@ -73,7 +73,7 @@ export default function PrincipalDashboard() {
         </div>
       </section>
 
-      <section className="mt-8">
+      <section id="final-approvals" className="mt-8 scroll-mt-28">
         <h2 className="mb-4 text-xl font-bold text-academic-ink">
           Final Review Queue {selectedHod ? `from ${selectedHod.name}` : `for ${department}`}
         </h2>

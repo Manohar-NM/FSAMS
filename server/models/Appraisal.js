@@ -49,6 +49,8 @@ const appraisalSchema = new mongoose.Schema(
         uploadedAt: { type: Date, default: Date.now }
       }
     ],
+    submitted_at: Date,
+    is_locked: { type: Boolean, default: false },
     submittedAt: Date,
     approvedAt: Date,
     hodReviewedAt: Date,

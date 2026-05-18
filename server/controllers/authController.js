@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import { sendLoginAlertEmail } from "../utils/sendEmail.js";
 
 const signToken = (user) =>
   jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
@@ -45,6 +46,18 @@ export const login = async (req, res) => {
   }
 
   console.log("Login successful", { email: normalizedEmail, userId: user._id, role: user.role });
+
+  sendLoginAlertEmail({
+    to: user.email,
+    name: user.name,
+    role: user.role,
+    loginTime: new Date(),
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent")
+  }).catch((error) => {
+    console.warn("Login alert email could not be sent", { email: user.email, reason: error.message });
+  });
+
   res.json({ token: signToken(user), user: userPayload(user) });
 };
 

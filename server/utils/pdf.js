@@ -37,12 +37,13 @@ const escapeHtml = (value = "") =>
     .replaceAll('"', "&quot;");
 
 const label = (value) => value.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
+const displayValue = (value) => (value === 0 || value ? escapeHtml(value) : "-");
 
 const renderGeneralInfo = (generalInfo = {}) => `
   <table>
     <tbody>
       ${Object.entries(generalInfo)
-        .map(([key, value]) => `<tr><th>${label(key)}</th><td>${escapeHtml(value || "-")}</td></tr>`)
+        .map(([key, value]) => `<tr><th>${label(key)}</th><td>${displayValue(value)}</td></tr>`)
         .join("")}
     </tbody>
   </table>
@@ -65,9 +66,9 @@ const renderTable = (table, rows = []) => `
               .map(
                 (row) => `
                   <tr>
-                    ${table.columns.map((column) => `<td>${escapeHtml(row[column] || "-")}</td>`).join("")}
-                    <td>${escapeHtml(row.maxMarks ?? 0)}</td>
-                    <td>${escapeHtml(row.marks ?? 0)}</td>
+                    ${table.columns.map((column) => `<td>${displayValue(row[column])}</td>`).join("")}
+                    <td>${displayValue(row.maxMarks ?? 0)}</td>
+                    <td>${displayValue(row.marks ?? 0)}</td>
                   </tr>
                 `
               )
@@ -96,11 +97,13 @@ export const generateAppraisalPdf = async (appraisal) => {
         <style>
           body { font-family: Arial, sans-serif; color: #17211c; padding: 28px; }
           h1 { margin: 0; color: #16352f; font-size: 24px; text-align: center; }
+          h2, h3 { break-after: avoid; }
           h2 { background: #16352f; color: white; font-size: 15px; margin-top: 22px; padding: 9px 10px; }
           h2 span { float: right; color: #f4d28a; }
           h3 { color: #9f3c2f; font-size: 14px; margin-bottom: 6px; }
           p { margin: 4px 0; }
           table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 11px; }
+          tr { break-inside: avoid; }
           th, td { border: 1px solid #cbd5d1; padding: 7px; text-align: left; vertical-align: top; }
           th { background: #eef4f0; color: #16352f; }
           .meta { margin: 16px 0; }
@@ -115,9 +118,10 @@ export const generateAppraisalPdf = async (appraisal) => {
         <div class="meta">
           <table>
             <tbody>
-              <tr><th>Faculty Name</th><td>${escapeHtml(faculty.name || "-")}</td><th>Faculty ID</th><td>${escapeHtml(faculty.facultyId || "-")}</td></tr>
-              <tr><th>Department</th><td>${escapeHtml(appraisal.department || "-")}</td><th>Academic Year</th><td>${escapeHtml(appraisal.academicYear || "-")}</td></tr>
-              <tr><th>Status</th><td>${escapeHtml(appraisal.status || "-")}</td><th>Generated</th><td>${new Date().toLocaleString()}</td></tr>
+              <tr><th>Faculty Name</th><td>${displayValue(faculty.name)}</td><th>Faculty ID</th><td>${displayValue(faculty.facultyId)}</td></tr>
+              <tr><th>Designation</th><td>${displayValue(faculty.designation)}</td><th>Department</th><td>${displayValue(appraisal.department)}</td></tr>
+              <tr><th>Academic Year</th><td>${displayValue(appraisal.academicYear)}</td><th>Semester</th><td>${displayValue(appraisal.semester)}</td></tr>
+              <tr><th>Status</th><td>${displayValue(appraisal.status)}</td><th>Generated</th><td>${new Date().toLocaleString()}</td></tr>
             </tbody>
           </table>
         </div>
@@ -127,19 +131,29 @@ export const generateAppraisalPdf = async (appraisal) => {
           <p>Raw Marks: ${scores.rawTotal ?? 0}/${scores.maxTotal ?? 100}</p>
         </div>
         <h2>Remarks</h2>
-        <p><b>Faculty:</b> ${escapeHtml(appraisal.remarks?.faculty || "-")}</p>
-        <p><b>HOD:</b> ${escapeHtml(appraisal.remarks?.hod || "-")}</p>
-        <p><b>Principal:</b> ${escapeHtml(appraisal.remarks?.principal || "-")}</p>
+        <p><b>Faculty:</b> ${displayValue(appraisal.remarks?.faculty)}</p>
+        <p><b>HOD:</b> ${displayValue(appraisal.remarks?.hod)}</p>
+        <p><b>Principal:</b> ${displayValue(appraisal.remarks?.principal)}</p>
       </body>
     </html>`;
 
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
-  });
-  const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: "networkidle0" });
-  const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" } });
-  await browser.close();
-  return pdf;
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" } });
+    const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+
+    if (!pdfBuffer.length || pdfBuffer.subarray(0, 4).toString() !== "%PDF") {
+      throw new Error("Generated PDF buffer is invalid");
+    }
+
+    return pdfBuffer;
+  } finally {
+    if (browser) await browser.close();
+  }
 };
