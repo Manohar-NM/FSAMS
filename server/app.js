@@ -26,6 +26,15 @@ const allowedOrigins = new Set([
     .filter(Boolean)
 ]);
 
+const isAllowedVercelOrigin = (origin) => {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "fsams-client-kgji.vercel.app" || hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+};
+
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.originalUrl}`, {
     origin: req.headers.origin || "same-origin"
@@ -37,7 +46,9 @@ app.use(helmet());
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      if (!origin || allowedOrigins.has(origin) || isAllowedVercelOrigin(origin)) {
+        return callback(null, true);
+      }
       console.warn("CORS blocked request", { origin, allowedOrigins: Array.from(allowedOrigins) });
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
