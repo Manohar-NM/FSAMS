@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const rawApiUrl = import.meta.env.VITE_API_URL || "/api";
+const fallbackApiUrl = import.meta.env.PROD
+  ? "https://fsams.onrender.com/api"
+  : "/api";
+const rawApiUrl = import.meta.env.VITE_API_URL || fallbackApiUrl;
 const normalizedApiUrl = rawApiUrl.replace(/\/$/, "");
 const baseURL = normalizedApiUrl.endsWith("/api")
   ? normalizedApiUrl
