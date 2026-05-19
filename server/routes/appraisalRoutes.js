@@ -15,6 +15,7 @@ import {
   submitAppraisal,
   uploadProofs
 } from "../controllers/appraisalController.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 import { authorize, protect } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { appraisalDraftRules, reviewRules } from "../validators/appraisalValidators.js";
@@ -29,16 +30,16 @@ const storage = multer.diskStorage({
 const proofUpload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
 
 router.use(protect);
-router.get("/mine", authorize("faculty"), myAppraisals);
-router.post("/", authorize("faculty"), appraisalDraftRules, validate, saveDraft);
-router.post("/:id/proofs", authorize("faculty"), proofUpload.array("proofs", 5), uploadProofs);
-router.patch("/:id/submit", authorize("faculty"), submitAppraisal);
-router.get("/department", authorize("hod"), departmentQueue);
-router.patch("/:id/hod/:action", authorize("hod"), reviewRules, validate, hodAction);
-router.get("/principal", authorize("principal"), principalQueue);
-router.patch("/:id/principal-remarks", authorize("principal"), reviewRules, validate, principalRemarks);
-router.get("/admin", authorize("admin"), adminList);
-router.get("/:id/pdf", downloadPdf);
-router.get("/:id", getAppraisal);
+router.get("/mine", authorize("faculty"), asyncHandler(myAppraisals));
+router.post("/", authorize("faculty"), appraisalDraftRules, validate, asyncHandler(saveDraft));
+router.post("/:id/proofs", authorize("faculty"), proofUpload.array("proofs", 5), asyncHandler(uploadProofs));
+router.patch("/:id/submit", authorize("faculty"), asyncHandler(submitAppraisal));
+router.get("/department", authorize("hod"), asyncHandler(departmentQueue));
+router.patch("/:id/hod/:action", authorize("hod"), reviewRules, validate, asyncHandler(hodAction));
+router.get("/principal", authorize("principal"), asyncHandler(principalQueue));
+router.patch("/:id/principal-remarks", authorize("principal"), reviewRules, validate, asyncHandler(principalRemarks));
+router.get("/admin", authorize("admin"), asyncHandler(adminList));
+router.get("/:id/pdf", asyncHandler(downloadPdf));
+router.get("/:id", asyncHandler(getAppraisal));
 
 export default router;
