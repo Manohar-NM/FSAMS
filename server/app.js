@@ -60,6 +60,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
 
 app.get("/", (req, res) => res.json({ name: "FSAMS API", status: "healthy" }));
+app.get("/api/health", (req, res) => {
+  const states = ["disconnected", "connected", "connecting", "disconnecting"];
+  const database = states[mongoose.connection.readyState] || "unknown";
+
+  res.json({
+    name: "FSAMS API",
+    status: database === "connected" ? "healthy" : "starting",
+    database
+  });
+});
 app.use("/api", (req, res, next) => {
   if (mongoose.connection.readyState === 1) return next();
 

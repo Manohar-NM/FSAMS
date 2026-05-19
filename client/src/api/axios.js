@@ -3,7 +3,11 @@ import axios from "axios";
 const fallbackApiUrl = import.meta.env.PROD
   ? "https://fsams.onrender.com/api"
   : "/api";
-const rawApiUrl = import.meta.env.VITE_API_URL || fallbackApiUrl;
+const configuredApiUrl = import.meta.env.VITE_API_URL;
+const rawApiUrl =
+  import.meta.env.PROD && configuredApiUrl === "/api"
+    ? fallbackApiUrl
+    : configuredApiUrl || fallbackApiUrl;
 const normalizedApiUrl = rawApiUrl
   .replace(/^VITE_API_URL=/, "")
   .replace(/\/$/, "");
@@ -13,7 +17,7 @@ const baseURL = normalizedApiUrl.endsWith("/api")
 
 const api = axios.create({
   baseURL,
-  timeout: 15000,
+  timeout: 60000,
   withCredentials: false
 });
 

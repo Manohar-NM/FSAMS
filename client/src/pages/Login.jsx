@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { LockKeyhole } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
@@ -11,6 +12,10 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    api.get("/health", { timeout: 60000 }).catch(() => {});
+  }, []);
+
   const submit = async (event) => {
     event.preventDefault();
     setLoading(true);
@@ -19,7 +24,14 @@ export default function Login() {
       const user = await login(form);
       navigate({ faculty: "/faculty", hod: "/hod", principal: "/principal", admin: "/admin" }[user.role]);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Login failed");
+      const isTimeout = err.code === "ECONNABORTED" || err.message?.includes("timeout");
+      setError(
+        err.response?.data?.message ||
+          (isTimeout
+            ? "The server is taking longer than usual to start. Please try signing in again."
+            : err.message) ||
+          "Login failed"
+      );
     } finally {
       setLoading(false);
     }
