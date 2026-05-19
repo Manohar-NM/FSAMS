@@ -26,10 +26,11 @@ const allowedOrigins = new Set([
     .filter(Boolean)
 ]);
 
+const vercelProject = process.env.VERCEL_PROJECT || "fsams-client-kgji";
 const isAllowedVercelOrigin = (origin) => {
   try {
     const { hostname } = new URL(origin);
-    return hostname === "fsams-client-kgji.vercel.app" || hostname.endsWith(".vercel.app");
+    return hostname === `${vercelProject}.vercel.app` || hostname.startsWith(`${vercelProject}-`);
   } catch {
     return false;
   }

@@ -6,9 +6,9 @@ import User from "../models/User.js";
 dotenv.config();
 
 const admin = {
-  name: "Default Admin",
-  email: "nmm@fsams.com",
-  password: "nmm@123",
+  name: process.env.ADMIN_NAME || "Default Admin",
+  email: process.env.ADMIN_EMAIL || "admin@aiet.org.in",
+  password: process.env.ADMIN_PASSWORD || "replace-with-secure-admin-password",
   role: "admin",
   department: "Administration",
   designation: "System Administrator",
