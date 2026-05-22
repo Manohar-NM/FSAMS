@@ -161,6 +161,17 @@ export const principalDirectory = async (req, res) => {
   res.json({ departments: departments.length ? departments : ["CSE"], hods });
 };
 
+export const listActiveHods = async (req, res) => {
+  const query = { role: "hod", isActive: true };
+  if (req.user.role === "faculty") query.department = req.user.department;
+
+  const hods = await User.find(query)
+    .select("name email department facultyId designation")
+    .sort({ department: 1, name: 1 });
+
+  res.json({ hods });
+};
+
 export const resetPassword = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ message: "User not found" });

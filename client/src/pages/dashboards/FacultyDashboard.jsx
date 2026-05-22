@@ -69,6 +69,9 @@ const clampNumber = (value, max) => Math.max(0, Math.min(Number(max) || 0, Numbe
 const row = (maxMarks, data = {}) => ({ ...data, maxMarks, marks: 0 });
 const emptyTableRow = (definition) =>
   definition.columns.reduce((acc, column) => ({ ...acc, [column]: "" }), { maxMarks: definition.maxMarks, marks: 0 });
+const hourColumns = ["lectureHours", "tutorialHours", "practicalHours"];
+const calculateTotalHours = (item) =>
+  hourColumns.reduce((sum, column) => sum + (Number(item[column]) || 0), 0);
 
 const emptyForm = (user, academicYear = DEFAULT_ACADEMIC_YEAR, semester = 1) => ({
   academicYear,
@@ -122,6 +125,8 @@ const calculateScores = (parts) => {
 
 const isRowStarted = (item, columns) => columns.some((column) => String(item[column] || "").trim()) || Number(item.marks) > 0;
 const getErrorMessage = (error, fallback) => error?.response?.data?.message || error?.message || fallback;
+const getEmailFormatError = (email) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim()) ? "" : "Invalid email format";
 const normalizeStep = (value) => (SECTION_ORDER.includes(value) ? value : "partA");
 const isValidAcademicYear = (value) => /^\d{4}-\d{2}$/.test(String(value || "").trim());
 const getPdfFileName = (item) => `FAA-${item.academicYear}-Semester-${item.semester || "NA"}.pdf`;
@@ -165,6 +170,10 @@ export default function FacultyDashboard() {
   const [newAppraisalOpen, setNewAppraisalOpen] = useState(false);
   const [newAppraisalForm, setNewAppraisalForm] = useState({ academicYear: DEFAULT_ACADEMIC_YEAR, semester: "1" });
   const [newAppraisalError, setNewAppraisalError] = useState("");
+  const [hods, setHods] = useState([]);
+  const [submitHodMode, setSubmitHodMode] = useState("select");
+  const [submitHodEmail, setSubmitHodEmail] = useState("");
+  const [manualHodEmail, setManualHodEmail] = useState("");
   const loadedRef = useRef(false);
 
   const scores = useMemo(() => calculateScores(form.parts), [form.parts]);
@@ -180,8 +189,19 @@ export default function FacultyDashboard() {
     return data.appraisals;
   };
 
+  const loadHods = async () => {
+    try {
+      const { data } = await api.get("/users/hods");
+      setHods(data.hods || []);
+      if (!submitHodEmail && data.hods?.length) setSubmitHodEmail(data.hods[0].email);
+    } catch {
+      setHods([]);
+    }
+  };
+
   useEffect(() => {
     const initialize = async () => {
+      await loadHods();
       const records = await load();
       const editableRecord = records.find((item) => ["draft", "returned_for_edit"].includes(item.status));
       if (editableRecord) {
@@ -250,11 +270,6 @@ export default function FacultyDashboard() {
     });
 
     Object.keys(SECTION_MAX).forEach((section) => {
-      const hasStartedRow = (tableDefinitions[section] || []).some((table) =>
-        (form.parts[section]?.[table.key] || []).some((item) => isRowStarted(item, table.columns))
-      );
-      if (!hasStartedRow) nextErrors[`${section}.required`] = `${titles[section]} must have at least one entry before final submission.`;
-
       (tableDefinitions[section] || []).forEach((table) => {
         (form.parts[section]?.[table.key] || []).forEach((item, index) => {
           const marks = Number(item.marks) || 0;
@@ -339,8 +354,11 @@ export default function FacultyDashboard() {
   const updateCell = (section, table, index, field, value) => {
     setForm((prev) => {
       const rows = [...prev.parts[section][table]];
-      const nextValue = field === "marks" ? clampNumber(value, rows[index].maxMarks) : value;
-      rows[index] = { ...rows[index], [field]: nextValue };
+      const nextValue = field === "marks" ? clampNumber(value, rows[index].maxMarks) : hourColumns.includes(field) ? Math.max(0, Number(value) || 0) : value;
+      const nextRow = { ...rows[index], [field]: nextValue };
+      rows[index] = section === "partA" && table === "workload" && hourColumns.includes(field)
+        ? { ...nextRow, totalHours: calculateTotalHours(nextRow) }
+        : nextRow;
       return { ...prev, parts: { ...prev.parts, [section]: { ...prev.parts[section], [table]: rows } } };
     });
   };
@@ -379,14 +397,19 @@ export default function FacultyDashboard() {
   };
 
   const submit = async () => {
-    if (!validateAllSections()) return;
     setConfirmSubmit(false);
+    if (!validateAllSections()) return;
+    const hodEmail = submitHodMode === "manual" ? manualHodEmail.trim() : submitHodEmail.trim();
+    if (hodEmail && getEmailFormatError(hodEmail)) {
+      setMessage("Enter a valid HOD email address.");
+      return;
+    }
     setAction("submitting");
     try {
       const saved = await save(true, "summary", { background: true });
       const id = saved?._id || selectedId;
       if (!id) throw new Error("Draft must be saved before submission.");
-      const { data } = await api.patch(`/appraisals/${id}/submit`);
+      const { data } = await api.patch(`/appraisals/${id}/submit`, { hodEmail });
       const submittedAt = getSubmittedAt(data.appraisal);
       localStorage.removeItem(draftKey(user, id));
       setSelectedId(data.appraisal._id);
@@ -555,9 +578,15 @@ export default function FacultyDashboard() {
                   {table.columns.map((column) => (
                     <td key={column} className="px-3 py-3 align-top">
                       <input
-                        className="input"
-                        disabled={!editable}
+                        className={`input ${column === "totalHours" ? "bg-slate-100 font-bold text-academic-ink" : ""}`}
+                        disabled={!editable || column === "totalHours"}
+                        type={hourColumns.includes(column) || column === "totalHours" ? "number" : "text"}
+                        min={hourColumns.includes(column) || column === "totalHours" ? "0" : undefined}
                         value={item[column] || ""}
+                        onKeyDown={hourColumns.includes(column) || column === "totalHours" ? validateNumberKey : undefined}
+                        onPaste={(event) => {
+                          if ((hourColumns.includes(column) || column === "totalHours") && event.clipboardData.getData("text").includes("-")) event.preventDefault();
+                        }}
                         onChange={(event) => updateCell(section, table.key, index, column, event.target.value)}
                       />
                     </td>
@@ -866,6 +895,54 @@ export default function FacultyDashboard() {
             <p className="mt-2 text-sm text-slate-600">
               After submission, this form will be locked and sent to the HOD for review. You can edit again only if the HOD returns it for correction.
             </p>
+            <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-bold text-academic-ink">Send to HOD</p>
+              <div className="mt-3 grid gap-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="radio"
+                    name="hod-submit-mode"
+                    checked={submitHodMode === "select"}
+                    onChange={() => setSubmitHodMode("select")}
+                  />
+                  Select from department HOD list
+                </label>
+                <select
+                  className="input"
+                  disabled={submitHodMode !== "select" || !hods.length}
+                  value={submitHodEmail}
+                  onChange={(event) => setSubmitHodEmail(event.target.value)}
+                >
+                  {hods.length ? (
+                    hods.map((hod) => (
+                      <option key={hod._id} value={hod.email}>
+                        {hod.name} - {hod.email} ({hod.department})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No active HOD found for your department</option>
+                  )}
+                </select>
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="radio"
+                    name="hod-submit-mode"
+                    checked={submitHodMode === "manual"}
+                    onChange={() => setSubmitHodMode("manual")}
+                  />
+                  Type HOD email manually
+                </label>
+                <input
+                  className="input"
+                  type="email"
+                  placeholder="hod.department@example.com"
+                  disabled={submitHodMode !== "manual"}
+                  value={manualHodEmail}
+                  onChange={(event) => setManualHodEmail(event.target.value)}
+                />
+                <p className="text-xs text-slate-500">Manual email must match an active HOD account in the system.</p>
+              </div>
+            </div>
             <div className="mt-5 flex justify-end gap-3">
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => setConfirmSubmit(false)}>Cancel</button>
               <button type="button" className="btn-primary" disabled={busy} onClick={submit}>

@@ -1,4 +1,5 @@
 import Appraisal from "../models/Appraisal.js";
+import User from "../models/User.js";
 import { calculateScores } from "../utils/scoring.js";
 import { notifyRole, notifyUsers } from "../utils/notifications.js";
 import { generateAppraisalPdf } from "../utils/pdf.js";
@@ -78,23 +79,39 @@ export const submitAppraisal = async (req, res) => {
   if (!appraisal) return res.status(404).json({ message: "Appraisal not found" });
   if (!canFacultyEdit(appraisal)) return res.status(423).json({ message: "Appraisal is locked" });
 
+  const hodEmail = String(req.body.hodEmail || "").toLowerCase().trim();
+  let selectedHod = null;
+
+  if (hodEmail) {
+    selectedHod = await User.findOne({ email: hodEmail, role: "hod", isActive: true }).select("_id name email department");
+    if (!selectedHod) {
+      return res.status(400).json({ message: "Selected HOD email does not belong to an active HOD account." });
+    }
+  }
+
   const submittedAt = appraisal.submitted_at || appraisal.submittedAt || new Date();
   appraisal.status = "submitted";
   appraisal.submitted_at = submittedAt;
   appraisal.submittedAt = submittedAt;
   appraisal.is_locked = true;
+  if (selectedHod) appraisal.hodId = selectedHod._id;
   appraisal.remarks.returnReason = "";
   await appraisal.save();
 
-  await notifyRole({
-    role: "hod",
-    department: req.user.department,
+  const notificationPayload = {
     actor: req.user._id,
     appraisal: appraisal._id,
+    department: req.user.department,
     type: "submission",
     title: "New appraisal submitted",
     message: `New appraisal submitted by Faculty ID ${req.user.facultyId || req.user.name}`
-  });
+  };
+
+  if (selectedHod) {
+    await notifyUsers({ ...notificationPayload, recipients: [selectedHod._id] });
+  } else {
+    await notifyRole({ ...notificationPayload, role: "hod", department: req.user.department });
+  }
 
   res.json({ appraisal });
 };
@@ -106,10 +123,10 @@ export const myAppraisals = async (req, res) => {
 
 export const departmentQueue = async (req, res) => {
   const appraisals = await Appraisal.find({
-    department: req.user.department,
+    $or: [{ department: req.user.department }, { hodId: req.user._id }],
     status: { $in: ["submitted", "returned_for_edit", "hod_approved", "rejected"] }
   })
-    .populate("userId faculty", "name email department facultyId designation")
+    .populate("userId faculty hodId", "name email department facultyId designation")
     .sort({ updatedAt: -1 });
   res.json({ appraisals });
 };
@@ -137,7 +154,8 @@ export const getAppraisal = async (req, res) => {
   if (!appraisal) return res.status(404).json({ message: "Appraisal not found" });
 
   const isOwner = String(appraisal.userId._id) === String(req.user._id);
-  const isDeptHod = req.user.role === "hod" && appraisal.department === req.user.department;
+  const isAssignedHod = req.user.role === "hod" && String(appraisal.hodId?._id || appraisal.hodId || "") === String(req.user._id);
+  const isDeptHod = req.user.role === "hod" && (appraisal.department === req.user.department || isAssignedHod);
   const isPrincipalAllowed = req.user.role === "principal" && ["hod_approved", "final_reviewed"].includes(appraisal.status);
   const isAdmin = req.user.role === "admin";
 
@@ -153,7 +171,8 @@ export const hodAction = async (req, res) => {
   const appraisal = await Appraisal.findById(req.params.id);
 
   if (!appraisal) return res.status(404).json({ message: "Appraisal not found" });
-  if (appraisal.department !== req.user.department) return res.status(403).json({ message: "Department access denied" });
+  const isAssignedHod = String(appraisal.hodId || "") === String(req.user._id);
+  if (appraisal.department !== req.user.department && !isAssignedHod) return res.status(403).json({ message: "Department access denied" });
   if (appraisal.status !== "submitted") return res.status(400).json({ message: "Only submitted appraisals can be reviewed by HOD" });
 
   const transitions = {
@@ -260,7 +279,8 @@ export const downloadPdf = async (req, res) => {
   if (!appraisal) return res.status(404).json({ message: "Appraisal not found" });
 
   const isOwner = String(appraisal.userId._id) === String(req.user._id);
-  const isDeptHod = req.user.role === "hod" && appraisal.department === req.user.department;
+  const isAssignedHod = req.user.role === "hod" && String(appraisal.hodId?._id || appraisal.hodId || "") === String(req.user._id);
+  const isDeptHod = req.user.role === "hod" && (appraisal.department === req.user.department || isAssignedHod);
   const isPrincipalAllowed = req.user.role === "principal" && ["hod_approved", "final_reviewed"].includes(appraisal.status);
   const isAdmin = req.user.role === "admin";
   if (!isOwner && !isDeptHod && !isPrincipalAllowed && !isAdmin) {

@@ -5,6 +5,7 @@ import {
   bulkUploadUsers,
   createUser,
   departmentFaculty,
+  listActiveHods,
   listUsers,
   principalDirectory,
   resetPassword,
@@ -21,6 +22,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 102
 router.use(protect);
 router.get("/department/faculty", authorize("hod"), departmentFaculty);
 router.get("/principal/directory", authorize("principal"), principalDirectory);
+router.get("/hods", authorize("faculty", "admin"), listActiveHods);
 
 router.use(authorize("admin"));
 router.get("/", listUsers);

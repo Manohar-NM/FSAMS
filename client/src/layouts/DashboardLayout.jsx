@@ -42,13 +42,13 @@ const roleLabels = {
 
 const sidebarConfig = {
   admin: [
-    { label: "Dashboard", icon: LayoutDashboard, section: "dashboard-overview" },
-    { label: "Create Users", icon: UserPlus, section: "create-users" },
-    { label: "Manage Users", icon: UsersRound, section: "manage-users" },
-    { label: "Departments", icon: Building2, section: "departments" },
+    { label: "Dashboard", icon: LayoutDashboard, path: "/admin", section: "dashboard-overview" },
+    { label: "Create Users", icon: UserPlus, path: "/admin/create-users", section: "create-users" },
+    { label: "Manage Users", icon: UsersRound, path: "/admin/users", section: "manage-users" },
+    { label: "Departments", icon: Building2, path: "/admin/departments", section: "departments" },
     { label: "Notifications", icon: Bell, event: "fsams:open-notifications" },
-    { label: "Reports", icon: FileBarChart, section: "reports" },
-    { label: "Settings", icon: Settings, section: "dashboard-overview" },
+    { label: "Reports", icon: FileBarChart, path: "/admin/reports", section: "reports" },
+    { label: "Settings", icon: Settings, path: "/admin/settings", section: "settings" },
     { label: "Logout", icon: LogOut, action: "logout" }
   ],
   faculty: [
@@ -108,6 +108,8 @@ const scrollToSection = (section) => {
   });
 };
 
+const normalizePath = (path) => path.replace(/\/+$/, "") || "/";
+
 export default function DashboardLayout({ title, subtitle, headerAction, children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -117,6 +119,7 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
   const Icon = roleIcon[user.role] || GraduationCap;
   const items = sidebarConfig[user.role] || sidebarConfig.faculty;
   const baseRoute = roleRoutes[user.role] || "/dashboard";
+  const currentPath = normalizePath(location.pathname);
 
   useEffect(() => {
     const hash = location.hash.replace("#", "");
@@ -159,6 +162,13 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
       setActiveSection(item.section || item.event);
     }
 
+    if (item.path) {
+      navigate(item.path);
+      setActiveSection(item.section || item.path);
+      setMobileOpen(false);
+      return;
+    }
+
     if (item.section) {
       setActiveSection(item.section);
       if (location.pathname !== baseRoute) {
@@ -174,11 +184,10 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
 
   const navMarkup = useMemo(
     () => (
-      <nav className="mt-8 space-y-1.5">
-        {items.map((item) => {
+      <nav className="space-y-1.5">
+        {items.filter((item) => item.action !== "logout").map((item) => {
           const ItemIcon = item.icon;
-          const active = item.section ? activeSection === item.section : activeSection === item.event;
-          const isLogout = item.action === "logout";
+          const active = item.path ? currentPath === normalizePath(item.path) : item.section ? activeSection === item.section : activeSection === item.event;
           return (
             <button
               key={item.label}
@@ -187,9 +196,7 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
               className={`group flex w-full items-center gap-3 rounded-md px-4 py-3 text-left text-sm font-semibold transition duration-200 ${
                 active
                   ? "bg-white/18 text-white shadow-[0_12px_34px_rgba(16,185,129,0.18)] ring-1 ring-white/20"
-                  : isLogout
-                    ? "text-emerald-50/90 hover:bg-rose-500/15 hover:text-white"
-                    : "text-emerald-50/86 hover:bg-white/12 hover:text-white"
+                  : "text-emerald-50/86 hover:bg-white/12 hover:text-white"
               }`}
             >
               <span
@@ -206,7 +213,7 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
         })}
       </nav>
     ),
-    [activeSection, items]
+    [activeSection, currentPath, items]
   );
 
   return (
@@ -232,7 +239,7 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,44,34,0.96),rgba(3,55,44,0.9)_42%,rgba(2,28,24,0.98))]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(110,231,183,0.22),transparent_32%),linear-gradient(90deg,rgba(255,255,255,0.08),transparent_48%)]" />
 
-        <div className="relative flex h-full flex-col p-5">
+        <div className="relative flex h-full min-h-0 flex-col p-5">
           <div className="flex items-start justify-between gap-3">
             <button type="button" onClick={() => handleNav({ section: "dashboard-overview" })} className="flex min-w-0 items-center gap-3 text-left">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md border border-white/20 bg-white/12 shadow-glass backdrop-blur">
@@ -268,11 +275,26 @@ export default function DashboardLayout({ title, subtitle, headerAction, childre
             </div>
           </div>
 
-          {navMarkup}
+          <div className="mt-8 min-h-0 flex-1 overflow-y-auto pr-1">
+            {navMarkup}
+          </div>
 
-          <div className="mt-auto rounded-md border border-white/10 bg-black/16 px-4 py-3 text-xs text-emerald-50/70 backdrop-blur">
+          <div className="mt-4 shrink-0 space-y-3">
+            <button
+              type="button"
+              onClick={() => handleNav({ label: "Logout", icon: LogOut, action: "logout" })}
+              className="group flex w-full items-center gap-3 rounded-md px-4 py-3 text-left text-sm font-semibold text-emerald-50/90 transition duration-200 hover:bg-rose-500/15 hover:text-white"
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/8 text-emerald-100/90 transition group-hover:bg-white/14">
+                <LogOut size={18} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">Logout</span>
+            </button>
+
+            <div className="rounded-md border border-white/10 bg-black/16 px-4 py-3 text-xs text-emerald-50/70 backdrop-blur">
             <p className="font-semibold text-emerald-50">Alva's Institute of Engineering & Technology</p>
             <p className="mt-1">Premium institutional appraisal workflow.</p>
+            </div>
           </div>
         </div>
       </aside>
